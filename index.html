@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neofronix - Загрузчик файлов</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; margin: 0; padding: 0; }
+        body { background: linear-gradient(135deg, #0f172a, #1e293b); color: #e2e8f0; min-height: 100vh; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 40px; padding: 20px; }
+        h1 { font-size: 2.8rem; margin-bottom: 10px; background: linear-gradient(90deg, #60a5fa, #a78bfa); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .subtitle { color: #94a3b8; font-size: 1.1rem; }
+        .card { background: rgba(30, 41, 59, 0.7); border: 1px solid #475569; border-radius: 16px; padding: 30px; margin-bottom: 30px; backdrop-filter: blur(10px); }
+        h2 { color: #cbd5e1; margin-bottom: 20px; font-size: 1.5rem; }
+        .upload-area { border: 3px dashed #60a5fa; border-radius: 12px; padding: 40px; text-align: center; transition: all 0.3s; cursor: pointer; margin-bottom: 20px; }
+        .upload-area:hover, .upload-area.dragover { background: rgba(96, 165, 250, 0.1); border-color: #a78bfa; }
+        .upload-icon { font-size: 3rem; margin-bottom: 15px; color: #60a5fa; }
+        .btn { background: linear-gradient(90deg, #3b82f6, #8b5cf6); color: white; border: none; padding: 14px 28px; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: transform 0.2s, opacity 0.2s; display: inline-block; margin-top: 10px; }
+        .btn:hover { transform: translateY(-2px); opacity: 0.9; }
+        .curl-command { background: #1e293b; border: 1px solid #475569; border-radius: 10px; padding: 20px; margin-top: 25px; font-family: monospace; color: #86efac; overflow-x: auto; }
+        .file-list { list-style: none; }
+        .file-item { background: rgba(51, 65, 85, 0.6); border-left: 4px solid #60a5fa; padding: 15px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .file-name { font-weight: 500; word-break: break-all; }
+        .file-size { color: #94a3b8; font-size: 0.9rem; }
+        .file-actions a { color: #60a5fa; text-decoration: none; margin-left: 15px; font-size: 0.9rem; }
+        .file-actions a:hover { text-decoration: underline; }
+        .error { color: #f87171; background: rgba(248, 113, 113, 0.1); padding: 10px; border-radius: 8px; margin-top: 10px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Neofronix</h1>
+            <p class="subtitle">Загрузите файл и просмотрите список загруженных файлов</p>
+        </header>
+
+        <main class="card">
+            <h2>📤 Загрузить файл</h2>
+            <div class="upload-area" id="dropArea">
+                <div class="upload-icon">⬆️</div>
+                <p>Перетащите файл сюда или нажмите для выбора</p>
+                <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
+                    <input type="file" name="file" id="fileInput" style="display: none;">
+                    <button type="submit" class="btn" id="uploadBtn" disabled>Загрузить файл</button>
+                </form>
+                <div class="error" id="errorMsg"></div>
+            </div>
+
+            <div class="curl-command">
+                <strong>Использовать cURL:</strong><br>
+                <code>curl -F "file=@/путь/к/твоему/файлу.zip" http://ваш-сайт.ru/upload</code>
+            </div>
+        </main>
+
+        <section class="card">
+            <h2>📂 Загруженные файлы</h2>
+            <ul class="file-list" id="fileList">
+                <!-- Список файлов будет загружаться здесь -->
+                <li>Загрузка списка файлов...</li>
+            </ul>
+            <button class="btn" onclick="loadFileList()" style="margin-top: 15px;">🔄 Обновить список</button>
+        </section>
+    </div>
+
+    <script>
+        // Элементы DOM
+        const fileInput = document.getElementById('fileInput');
+        const dropArea = document.getElementById('dropArea');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const uploadForm = document.getElementById('uploadForm');
+        const errorMsg = document.getElementById('errorMsg');
+        const fileList = document.getElementById('fileList');
+
+        // Обработчики для drag-and-drop
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => dropArea.classList.add('dragover'), false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => dropArea.classList.remove('dragover'), false);
+        });
+        dropArea.addEventListener('drop', handleDrop, false);
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length) {
+                fileInput.files = files;
+                updateUploadButton();
+            }
+        }
+
+        // Клик по области загрузки
+        dropArea.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', updateUploadButton);
+
+        function updateUploadButton() {
+            if (fileInput.files.length) {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = `Загрузить "${fileInput.files[0].name}"`;
+            } else {
+                uploadBtn.disabled = true;
+                uploadBtn.textContent = 'Загрузить файл';
+            }
+        }
+
+        // Загрузка файла
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!fileInput.files.length) return;
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Загрузка...';
+            errorMsg.style.display = 'none';
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.text();
+                if (response.ok) {
+                    alert('✅ Файл успешно загружен!');
+                    fileInput.value = '';
+                    updateUploadButton();
+                    loadFileList();
+                } else {
+                    throw new Error(result || 'Ошибка загрузки');
+                }
+            } catch (err) {
+                errorMsg.textContent = 'Ошибка: ' + err.message;
+                errorMsg.style.display = 'block';
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Загрузить файл';
+            }
+        });
+
+        // Загрузка списка файлов
+        async function loadFileList() {
+            try {
+                const response = await fetch('/list');
+                const files = await response.json();
+                fileList.innerHTML = '';
+                if (files.length === 0) {
+                    fileList.innerHTML = '<li>Нет загруженных файлов.</li>';
+                    return;
+                }
+                files.forEach(file => {
+                    const li = document.createElement('li');
+                    li.className = 'file-item';
+                    li.innerHTML = `
+                        <div>
+                            <div class="file-name">📄 ${file.name}</div>
+                            <div class="file-size">${formatBytes(file.size)} • ${new Date(file.date).toLocaleString()}</div>
+                        </div>
+                        <div class="file-actions">
+                            <a href="/files/${file.name}" download>Скачать</a>
+                            <a href="#" onclick="deleteFile('${file.name}'); return false;">Удалить</a>
+                        </div>
+                    `;
+                    fileList.appendChild(li);
+                });
+            } catch (err) {
+                fileList.innerHTML = '<li>Не удалось загрузить список файлов.</li>';
+            }
+        }
+
+        // Удаление файла
+        async function deleteFile(filename) {
+            if (!confirm(`Удалить файл "${filename}"?`)) return;
+            try {
+                const response = await fetch(`/delete/${filename}`, { method: 'DELETE' });
+                if (response.ok) {
+                    loadFileList();
+                } else {
+                    alert('Ошибка при удалении файла');
+                }
+            } catch (err) {
+                alert('Ошибка соединения');
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Б';
+            const k = 1024;
+            const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Загрузить список файлов при старте
+        loadFileList();
+    </script>
+</body>
+</html>
